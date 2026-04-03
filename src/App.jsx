@@ -99,8 +99,14 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const openPlay = useCallback((item) => setModal({ item, mode: 'play' }), [])
-  const openInfo = useCallback((item) => setModal({ item, mode: 'info' }), [])
+  const openPlay = useCallback(
+    (item) => setModal({ item, mode: 'play', section: activeSection }),
+    [activeSection]
+  )
+  const openInfo = useCallback(
+    (item) => setModal({ item, mode: 'info', section: activeSection }),
+    [activeSection]
+  )
   const closeModal = useCallback(() => setModal(null), [])
   const handleSectionChange = useCallback((section) => {
     const nextUrl = getPathForSection(section)
@@ -254,6 +260,7 @@ export default function App() {
         <VideoModal
           item={modal.item}
           mode={modal.mode}
+          section={modal.section}
           onClose={closeModal}
         />
       )}

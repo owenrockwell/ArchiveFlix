@@ -458,3 +458,128 @@ export async function getStreamUrl(identifier) {
   }
   return null
 }
+
+/**
+ * Check if a file is a video file.
+ */
+function isVideoFile(filename) {
+  if (!filename || typeof filename !== 'string') return false
+  const lower = filename.toLowerCase()
+  const videoExts = ['mp4', 'webm', 'ogv', 'mpeg', 'mpg', 'mov', 'avi', 'mkv']
+  return videoExts.some((ext) => lower.endsWith(`.${ext}`))
+}
+
+/**
+ * Parse episode info from a filename.
+ * Returns { number, title } extracted from patterns like "101", "s01e01", "episode-5", etc.
+ */
+function parseEpisodeInfo(filename) {
+  if (!filename) return { number: null, title: filename, hasMarker: false }
+
+  const nameWithoutExt = filename.replace(/\.[^.]+$/, '')
+  let number = null
+  let title = nameWithoutExt
+  let hasMarker = false
+
+  // Try patterns: "s01e05" or "S01E05"
+  const seasonEpisode = nameWithoutExt.match(/s(\d+)e(\d+)/i)
+  if (seasonEpisode) {
+    const season = parseInt(seasonEpisode[1], 10)
+    const episode = parseInt(seasonEpisode[2], 10)
+    number = season * 100 + episode
+    title = `S${seasonEpisode[1]}E${seasonEpisode[2]}`
+    hasMarker = true
+  }
+
+  // Try pattern: "101" (season 1, episode 1) or "205" (season 2, episode 5)
+  if (!number) {
+    const simple = nameWithoutExt.match(/^(\d{2,3})$/)
+    if (simple) {
+      number = parseInt(simple[1], 10)
+      const season = Math.floor(number / 100) || 1
+      const episode = number % 100
+      title = `S${season.toString().padStart(2, '0')}E${episode.toString().padStart(2, '0')}`
+      hasMarker = true
+    }
+  }
+
+  // Try pattern: "episode 5" or "ep. 10"
+  if (!number) {
+    const ep = nameWithoutExt.match(/ep(?:isode)?[.\s]+(\d+)/i)
+    if (ep) {
+      number = parseInt(ep[1], 10)
+      title = `Episode ${ep[1]}`
+      hasMarker = true
+    }
+  }
+
+  return { number: number ?? 0, title, hasMarker }
+}
+
+function looksLikeSeries(item, episodes = []) {
+  const structuredEpisodes = episodes.filter((episode) => episode.hasMarker)
+  const distinctStructuredTitles = new Set(structuredEpisodes.map((episode) => episode.title)).size
+
+  if (distinctStructuredTitles >= 2) return true
+  return isTvLike(item)
+}
+
+/**
+ * Fetch all video episodes from an item.
+ * Returns array of episodes, sorted by episode number.
+ */
+export async function getEpisodes(identifier) {
+  try {
+    const cacheKey = `episodes:v2:${identifier}`
+    const cached = getSessionCache(cacheKey)
+    if (cached) return cached
+
+    const meta = await fetchMetadata(identifier)
+    const files = meta?.files ?? []
+
+    // Find all video files
+    const videoFiles = files
+      .filter((f) => isVideoFile(f.name) && f.source !== 'metadata')
+      .map((f) => ({
+        name: f.name,
+        size: f.size ?? 0,
+        mtime: f.mtime ?? 0,
+        ...parseEpisodeInfo(f.name),
+      }))
+      .sort((a, b) => {
+        // Sort by episode number if available, otherwise by filename
+        if (a.number && b.number) return a.number - b.number
+        return a.name.localeCompare(b.name)
+      })
+
+    setSessionCache(cacheKey, videoFiles)
+    return videoFiles
+  } catch (e) {
+    console.warn('getEpisodes error', e)
+    return []
+  }
+}
+
+export function shouldShowEpisodes(item, section = 'home', episodes = []) {
+  if (section === 'movies') return false
+  if (section === 'tv') return looksLikeSeries(item, episodes)
+  return looksLikeSeries(item, episodes) && episodes.filter((episode) => episode.hasMarker).length >= 2
+}
+
+/**
+ * Get the stream URL for a specific video file within an item.
+ */
+export async function getStreamUrlForFile(identifier, filename) {
+  try {
+    const cacheKey = `stream:${identifier}:${filename}`
+    const cached = getSessionCache(cacheKey)
+    if (cached) return cached
+
+    const url = `${STREAM_BASE}/${identifier}/${encodeURIComponent(filename)}`
+    setSessionCache(cacheKey, url)
+    return url
+  } catch (e) {
+    console.warn('getStreamUrlForFile error', e)
+    return null
+  }
+}

@@ -9,10 +9,10 @@ import {
   FiLoader,
   FiExternalLink,
 } from 'react-icons/fi'
-import { getStreamUrl, getThumbnail } from '../services/archiveApi'
+import { getStreamUrl, getThumbnail, getEpisodes, getStreamUrlForFile, shouldShowEpisodes } from '../services/archiveApi'
 import './VideoModal.css'
 
-export default function VideoModal({ item, mode, onClose }) {
+export default function VideoModal({ item, mode, section = 'home', onClose }) {
   const [streamUrl, setStreamUrl] = useState(null)
   const [loadingStream, setLoadingStream] = useState(true)
   const [loadingVideo, setLoadingVideo] = useState(mode === 'play')
@@ -22,6 +22,8 @@ export default function VideoModal({ item, mode, onClose }) {
   const [duration, setDuration] = useState(0)
   const [showControls, setShowControls] = useState(true)
   const [streamError, setStreamError] = useState(false)
+  const [episodes, setEpisodes] = useState([])
+  const [selectedEpisode, setSelectedEpisode] = useState(null)
   const videoRef = useRef(null)
   const controlsTimer = useRef(null)
   const thumb = getThumbnail(item.identifier)
@@ -29,6 +31,7 @@ export default function VideoModal({ item, mode, onClose }) {
   const description = Array.isArray(item.description)
     ? item.description[0]
     : item.description ?? 'No description available.'
+  const supportsEpisodes = shouldShowEpisodes(item, section, episodes)
 
   useEffect(() => {
     // Prevent body scroll while modal is open
@@ -36,16 +39,45 @@ export default function VideoModal({ item, mode, onClose }) {
     return () => { document.body.style.overflow = '' }
   }, [])
 
+  // Fetch episodes for the item
   useEffect(() => {
+    getEpisodes(item.identifier).then((eps) => {
+      setEpisodes(eps)
+      if (shouldShowEpisodes(item, section, eps) && eps.length > 0) {
+        setSelectedEpisode(eps[0])
+      } else {
+        setSelectedEpisode(null)
+      }
+    })
+  }, [item, item.identifier, section])
+
+  // Load stream URL based on selected episode or item
+  useEffect(() => {
+    setLoadingStream(true)
     setLoadingVideo(mode === 'play')
-    getStreamUrl(item.identifier)
-      .then((url) => {
+    setStreamError(false)
+
+    const loadStream = async () => {
+      try {
+        let url = null
+        if (supportsEpisodes && selectedEpisode) {
+          url = await getStreamUrlForFile(item.identifier, selectedEpisode.name)
+        } else {
+          url = await getStreamUrl(item.identifier)
+        }
+        
         setStreamUrl(url)
         if (!url) setStreamError(true)
-      })
-      .catch(() => setStreamError(true))
-      .finally(() => setLoadingStream(false))
-  }, [item.identifier])
+      } catch (e) {
+        console.error('Failed to load stream:', e)
+        setStreamError(true)
+      } finally {
+        setLoadingStream(false)
+      }
+    }
+
+    loadStream()
+  }, [item.identifier, selectedEpisode, supportsEpisodes, mode])
 
   // Auto-play when stream is ready and we're in play mode
   useEffect(() => {
@@ -108,6 +140,15 @@ export default function VideoModal({ item, mode, onClose }) {
     const m = Math.floor(s / 60)
     const sec = Math.floor(s % 60).toString().padStart(2, '0')
     return `${m}:${sec}`
+  }
+
+  function playNextEpisode() {
+    if (!supportsEpisodes) return
+    if (!selectedEpisode || episodes.length === 0) return
+    const currentIndex = episodes.findIndex((ep) => ep.name === selectedEpisode.name)
+    if (currentIndex >= 0 && currentIndex < episodes.length - 1) {
+      setSelectedEpisode(episodes[currentIndex + 1])
+    }
   }
 
   const archiveUrl = `https://archive.org/details/${item.identifier}`
@@ -173,6 +214,7 @@ export default function VideoModal({ item, mode, onClose }) {
                 setLoadingVideo(false)
               }}
               onPause={() => setPlaying(false)}
+              onEnded={playNextEpisode}
               onError={() => {
                 setStreamError(true)
                 setLoadingVideo(false)
@@ -247,6 +289,29 @@ export default function VideoModal({ item, mode, onClose }) {
               <FiExternalLink /> Archive.org
             </a>
           </div>
+
+          {/* Episode selector */}
+          {supportsEpisodes && episodes.length > 1 && (
+            <div className="vmodal__episodes">
+              <h3 className="vmodal__episodes-title">Episodes</h3>
+              <div className="vmodal__episode-list">
+                {episodes.map((ep, idx) => (
+                  <button
+                    key={idx}
+                    className={`vmodal__episode-item ${selectedEpisode?.name === ep.name ? 'active' : ''}`}
+                    onClick={() => setSelectedEpisode(ep)}
+                  >
+                    <FiPlay className="vmodal__episode-play-icon" />
+                    <span className="vmodal__episode-title">{ep.title}</span>
+                    {selectedEpisode?.name === ep.name && (
+                      <span className="vmodal__episode-now-playing">Playing</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <p className="vmodal__desc">{description}</p>
           {item.subject && (
             <div className="vmodal__subjects">
