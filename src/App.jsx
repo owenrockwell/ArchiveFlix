@@ -24,6 +24,22 @@ function getPathForSection(section) {
   return slug ? `${basePath}/${slug}` : `${basePath}/`
 }
 
+function getSearchQueryFromLocation() {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('q')?.trim() ?? ''
+}
+
+function buildUrl(section, query = '') {
+  const path = getPathForSection(section)
+  const trimmedQuery = query.trim()
+
+  if (!trimmedQuery) return path
+
+  const params = new URLSearchParams()
+  params.set('q', trimmedQuery)
+  return `${path}?${params.toString()}`
+}
+
 function getSectionFromLocation() {
   const basePath = getBasePath()
   const currentPath = window.location.pathname
@@ -39,7 +55,7 @@ function getSectionFromLocation() {
 
 export default function App() {
   const [modal, setModal] = useState(null)   // { item, mode: 'play' | 'info' }
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(getSearchQueryFromLocation)
   const [activeSection, setActiveSection] = useState(getSectionFromLocation)
   const [visibleCategories, setVisibleCategories] = useState(CATEGORIES)
   const [categoriesLoading, setCategoriesLoading] = useState(false)
@@ -57,18 +73,27 @@ export default function App() {
   const openInfo = useCallback((item) => setModal({ item, mode: 'info' }), [])
   const closeModal = useCallback(() => setModal(null), [])
   const handleSectionChange = useCallback((section) => {
-    const nextPath = getPathForSection(section)
-    if (window.location.pathname !== nextPath) {
-      window.history.pushState({ section }, '', nextPath)
+    const nextUrl = buildUrl(section, searchQuery)
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    if (currentUrl !== nextUrl) {
+      window.history.pushState({ section, query: searchQuery }, '', nextUrl)
     }
     setActiveSection(section)
-    setSearchQuery('')
-  }, [])
+  }, [searchQuery])
+
+  const handleSearchChange = useCallback((query) => {
+    const nextUrl = buildUrl(activeSection, query)
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    if (currentUrl !== nextUrl) {
+      window.history.pushState({ section: activeSection, query }, '', nextUrl)
+    }
+    setSearchQuery(query)
+  }, [activeSection])
 
   useEffect(() => {
     const handlePopState = () => {
       setActiveSection(getSectionFromLocation())
-      setSearchQuery('')
+      setSearchQuery(getSearchQueryFromLocation())
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -76,11 +101,12 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const canonicalPath = getPathForSection(activeSection)
-    if (window.location.pathname !== canonicalPath) {
-      window.history.replaceState({ section: activeSection }, '', canonicalPath)
+    const canonicalUrl = buildUrl(activeSection, searchQuery)
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    if (currentUrl !== canonicalUrl) {
+      window.history.replaceState({ section: activeSection, query: searchQuery }, '', canonicalUrl)
     }
-  }, [activeSection])
+  }, [activeSection, searchQuery])
 
   useEffect(() => {
     let cancelled = false
@@ -113,10 +139,11 @@ export default function App() {
   return (
     <div className="app">
       <Navbar
-        onSearch={setSearchQuery}
+        onSearch={handleSearchChange}
+        searchQuery={searchQuery}
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
-        getSectionHref={getPathForSection}
+        getSectionHref={buildUrl}
       />
 
       {searchQuery ? (

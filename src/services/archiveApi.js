@@ -38,6 +38,26 @@ const FALLBACK_GENRES = {
 }
 
 const IGNORED_GENRES = new Set(['unknown', 'other', 'misc', 'miscellaneous', 'n/a', 'none'])
+const TV_TERMS = [
+  'television',
+  'tv series',
+  'tv show',
+  'series',
+  'episode',
+  'season',
+  'sitcom',
+  'sketch comedy',
+  'variety show',
+]
+const MOVIE_TERMS = [
+  'feature film',
+  'feature-length',
+  'motion picture',
+  'movie',
+  'film',
+  'cinema',
+  'documentary',
+]
 
 function slugifyTag(tag) {
   return tag.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
@@ -70,6 +90,56 @@ function escapeQueryValue(value) {
   return value.replace(/["\\]/g, '')
 }
 
+function getItemText(item) {
+  const subjects = Array.isArray(item.subject) ? item.subject.join(' ') : (item.subject || '')
+  const genres = Array.isArray(item.genre) ? item.genre.join(' ') : (item.genre || '')
+  return `${item.title || ''} ${item.description || ''} ${subjects} ${genres}`.toLowerCase()
+}
+
+function parseRuntimeMinutes(runtime) {
+  if (runtime == null) return null
+  const value = Array.isArray(runtime) ? runtime[0] : String(runtime)
+  const text = value.toLowerCase().trim()
+
+  const hourMinuteMatch = text.match(/(\d+)\s*(?:h|hr|hour)[^\d]*(\d{1,2})?\s*(?:m|min|minute)?/)
+  if (hourMinuteMatch) {
+    const hours = Number(hourMinuteMatch[1] || 0)
+    const minutes = Number(hourMinuteMatch[2] || 0)
+    return hours * 60 + minutes
+  }
+
+  const minuteMatch = text.match(/(\d{1,3})\s*(?:m|min|minute)/)
+  if (minuteMatch) return Number(minuteMatch[1])
+
+  if (/^\d{1,3}$/.test(text)) return Number(text)
+  return null
+}
+
+function isTvLike(item) {
+  const text = getItemText(item)
+  return TV_TERMS.some((term) => text.includes(term))
+}
+
+function isMovieLike(item) {
+  const text = getItemText(item)
+  const runtimeMinutes = parseRuntimeMinutes(item.runtime)
+
+  if (isTvLike(item)) return false
+  if (runtimeMinutes !== null && runtimeMinutes < 35) return false
+  if (runtimeMinutes !== null && runtimeMinutes >= 45) return true
+  return MOVIE_TERMS.some((term) => text.includes(term))
+}
+
+function filterBySection(items, section) {
+  if (section === 'tv') {
+    return items.filter((item) => isTvLike(item) || parseRuntimeMinutes(item.runtime) === null || parseRuntimeMinutes(item.runtime) <= 70)
+  }
+  if (section === 'movies') {
+    return items.filter(isMovieLike)
+  }
+  return items
+}
+
 function sectionBaseQuery(section) {
   return SECTION_BASE_QUERY[section] ?? SECTION_BASE_QUERY.home
 }
@@ -95,9 +165,7 @@ export const getThumbnail = (identifier) =>
  * This is a client-side safety check to catch inappropriate content.
  */
 function isAppropriate(item) {
-  const subjects = Array.isArray(item.subject) ? item.subject.join(' ') : (item.subject || '')
-  const genres = Array.isArray(item.genre) ? item.genre.join(' ') : (item.genre || '')
-  const text = `${item.title || ''} ${item.description || ''} ${subjects} ${genres}`.toLowerCase()
+  const text = getItemText(item)
   const inappropriateKeywords = ['xxx', 'adult', 'explicit', 'pornography', 'erotic', 'nudity', 'obscene']
   return !inappropriateKeywords.some((keyword) => text.includes(keyword))
 }
@@ -271,11 +339,12 @@ export async function fetchCategory(categoryId, rows = 40) {
  */
 export async function searchVideos(query, rows = 40, section = 'home') {
   const sectionClause = getSectionClause(section)
-  return search({
+  const results = await search({
     q: `mediatype:movies${sectionClause} AND (title:(${query}) OR subject:(${query})) AND ${CONTENT_FILTER_QUERY}`,
     rows,
     'sort[]': 'downloads desc',
   })
+  return filterBySection(results, section)
 }
 
 /**

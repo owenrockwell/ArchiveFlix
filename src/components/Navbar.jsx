@@ -8,7 +8,7 @@ const NAV_LINKS = [
   { id: 'movies', label: 'Movies' },
 ]
 
-export default function Navbar({ onSearch, activeSection, onSectionChange, getSectionHref }) {
+export default function Navbar({ onSearch, searchQuery, activeSection, onSectionChange, getSectionHref }) {
   const [scrolled, setScrolled] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -24,9 +24,14 @@ export default function Navbar({ onSearch, activeSection, onSectionChange, getSe
     if (searchOpen) inputRef.current?.focus()
   }, [searchOpen])
 
+  useEffect(() => {
+    setQuery(searchQuery)
+    setSearchOpen(Boolean(searchQuery))
+  }, [searchQuery])
+
   function handleSubmit(e) {
     e.preventDefault()
-    if (query.trim()) onSearch(query.trim())
+    onSearch(query.trim())
   }
 
   function clearSearch() {
@@ -38,9 +43,6 @@ export default function Navbar({ onSearch, activeSection, onSectionChange, getSe
   function handleSectionClick(event, section) {
     event.preventDefault()
     onSectionChange(section)
-    setQuery('')
-    setSearchOpen(false)
-    onSearch('')
   }
 
   return (
@@ -48,7 +50,7 @@ export default function Navbar({ onSearch, activeSection, onSectionChange, getSe
       <div className="navbar__left">
         <a
           className="navbar__logo"
-          href={getSectionHref('home')}
+          href={getSectionHref('home', searchQuery)}
           onClick={(event) => handleSectionClick(event, 'home')}
         >
           ArchiveFlix
@@ -58,7 +60,7 @@ export default function Navbar({ onSearch, activeSection, onSectionChange, getSe
             <li key={link.id}>
               <a
                 className={`navbar__link-btn ${activeSection === link.id ? 'navbar__link-btn--active' : ''}`}
-                href={getSectionHref(link.id)}
+                href={getSectionHref(link.id, searchQuery)}
                 onClick={(event) => handleSectionClick(event, link.id)}
               >
                 {link.label}
