@@ -7,6 +7,22 @@ const BASE_METADATA = 'https://archive.org/metadata'
 const THUMB = (id) => `https://archive.org/services/img/${id}`
 const STREAM_BASE = 'https://archive.org/download'
 
+// ────────────────────────────────────────────────────────────────────────────
+//  Content filtering configuration
+// ────────────────────────────────────────────────────────────────────────────
+
+const EXPLICIT_SUBJECTS = [
+  'xxx',
+  'adult',
+  'explicit',
+  'pornography',
+  'erotic',
+  'nudity',
+  'obscene',
+]
+
+const CONTENT_FILTER_QUERY = EXPLICIT_SUBJECTS.map(s => `-subject:"${s}"`).join(' ')
+
 export { THUMB, STREAM_BASE }
 
 /**
@@ -14,6 +30,26 @@ export { THUMB, STREAM_BASE }
  */
 export const getThumbnail = (identifier) =>
   `https://archive.org/services/img/${identifier}`
+
+/**
+ * Check if an item should be filtered based on its metadata.
+ * This is a client-side safety check to catch inappropriate content.
+ */
+function isAppropriate(item) {
+  const subjects = Array.isArray(item.subject) ? item.subject.join(' ') : (item.subject || '')
+  const text = `${item.title || ''} ${item.description || ''} ${subjects}`.toLowerCase()
+  const inappropriateKeywords = [
+    'xxx', 'adult', 'explicit', 'pornography', 'erotic', 'nudity', 'obscene'
+  ]
+  return !inappropriateKeywords.some(keyword => text.includes(keyword))
+}
+
+/**
+ * Filter array of items to exclude inappropriate content.
+ */
+function filterAppropriate(items) {
+  return items.filter(isAppropriate)
+}
 
 /**
  * Fetch metadata for a single item.
@@ -34,7 +70,7 @@ async function search(params) {
   const defaults = {
     output: 'json',
     'fl[]': 'identifier,title,description,subject,year,runtime,creator,downloads',
-    rows: 24,
+    rows: 20,
     page: 1,
     'sort[]': 'downloads desc',
   }
@@ -42,10 +78,19 @@ async function search(params) {
   const qs = Object.entries(merged)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&')
-  const res = await fetch(`${BASE_SEARCH}?${qs}`)
-  if (!res.ok) throw new Error('Archive.org search failed')
-  const data = await res.json()
-  return data?.response?.docs ?? []
+  
+  try {
+    const res = await fetch(`${BASE_SEARCH}?${qs}`)
+    if (!res.ok) throw new Error('Archive.org search failed')
+    const data = await res.json()
+    let results = data?.response?.docs ?? []
+    // Apply client-side filtering as a safety measure
+    results = filterAppropriate(results)
+    return results
+  } catch (error) {
+    console.error('Search error:', error)
+    return []
+  }
 }
 
 // ── Category presets ──────────────────────────────────────────────────────────
@@ -54,52 +99,47 @@ export const CATEGORIES = [
   {
     id: 'feature_films',
     label: '🎬 Feature Films',
-    query: 'mediatype:movies AND subject:"feature film" AND -subject:xxx',
+    query: `mediatype:movies AND subject:"feature film" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'classic_tv',
     label: '📺 Classic TV',
-    query: 'mediatype:movies AND subject:"television" AND -subject:xxx',
+    query: `mediatype:movies AND subject:"television" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'documentaries',
     label: '🎥 Documentaries',
-    query: 'mediatype:movies AND subject:"documentary" AND -subject:xxx',
+    query: `mediatype:movies AND subject:"documentary" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'animation',
     label: '🎭 Animation & Cartoons',
-    query: 'collection:animationandcartoons AND -subject:xxx',
+    query: `collection:animationandcartoons AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'short_films',
     label: '🎞 Short Films',
-    query: 'mediatype:movies AND subject:"short film" AND -subject:xxx',
+    query: `mediatype:movies AND subject:"short film" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'horror',
     label: '👻 Horror',
-    query: 'mediatype:movies AND subject:"horror" AND -subject:xxx',
+    query: `mediatype:movies AND subject:"horror" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'science_fiction',
     label: '🚀 Science Fiction',
-    query: 'mediatype:movies AND subject:"science fiction" AND -subject:xxx',
+    query: `mediatype:movies AND subject:"science fiction" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'comedy',
     label: '😂 Comedy',
-    query: 'mediatype:movies AND subject:"comedy" AND -subject:xxx',
+    query: `mediatype:movies AND (subject:"comedy" OR description:"comedy") AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'silent_films',
     label: '🎩 Silent Films',
-    query: 'collection:silenthalloffame AND -subject:xxx',
-  },
-  {
-    id: 'news',
-    label: '📰 News & Public Affairs',
-    query: 'collection:news_and_public_affairs AND -subject:xxx',
+    query: `collection:silenthalloffame AND ${CONTENT_FILTER_QUERY}`,
   },
 ]
 
@@ -117,7 +157,7 @@ export async function fetchCategory(categoryId, rows = 24) {
  */
 export async function searchVideos(query, rows = 40) {
   return search({
-    q: `mediatype:movies AND (title:(${query}) OR subject:(${query})) AND -subject:xxx`,
+    q: `mediatype:movies AND (title:(${query}) OR subject:(${query})) AND ${CONTENT_FILTER_QUERY}`,
     rows,
     'sort[]': 'downloads desc',
   })
@@ -128,7 +168,7 @@ export async function searchVideos(query, rows = 40) {
  */
 export async function fetchHeroItem() {
   const items = await search({
-    q: 'mediatype:movies AND subject:"feature film" AND -subject:xxx AND year:[1930 TO 1980]',
+    q: `mediatype:movies AND subject:"feature film" AND year:[1930 TO 1980] AND ${CONTENT_FILTER_QUERY}`,
     rows: 20,
     'sort[]': 'downloads desc',
   })
