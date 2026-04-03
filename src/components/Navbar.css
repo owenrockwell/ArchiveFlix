@@ -32,6 +32,7 @@
   cursor: pointer;
   user-select: none;
   text-shadow: 0 0 20px rgba(229, 9, 20, 0.4);
+  text-decoration: none;
 }
 
 .navbar__links {
@@ -48,11 +49,11 @@
 
 .navbar__link-btn {
   background: transparent;
-  border: none;
   color: #e5e5e5;
   font-size: 0.85rem;
   cursor: pointer;
   transition: color 0.2s;
+  text-decoration: none;
 }
 
 .navbar__link-btn:hover {

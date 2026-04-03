@@ -8,7 +8,7 @@ const NAV_LINKS = [
   { id: 'movies', label: 'Movies' },
 ]
 
-export default function Navbar({ onSearch, activeSection, onSectionChange }) {
+export default function Navbar({ onSearch, activeSection, onSectionChange, getSectionHref }) {
   const [scrolled, setScrolled] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -35,7 +35,8 @@ export default function Navbar({ onSearch, activeSection, onSectionChange }) {
     onSearch('')
   }
 
-  function handleSectionClick(section) {
+  function handleSectionClick(event, section) {
+    event.preventDefault()
     onSectionChange(section)
     setQuery('')
     setSearchOpen(false)
@@ -45,17 +46,23 @@ export default function Navbar({ onSearch, activeSection, onSectionChange }) {
   return (
     <nav className={`navbar ${scrolled ? 'navbar--scrolled' : ''}`}>
       <div className="navbar__left">
-        <span className="navbar__logo">ArchiveFlix</span>
+        <a
+          className="navbar__logo"
+          href={getSectionHref('home')}
+          onClick={(event) => handleSectionClick(event, 'home')}
+        >
+          ArchiveFlix
+        </a>
         <ul className="navbar__links">
           {NAV_LINKS.map((link) => (
             <li key={link.id}>
-              <button
-                type="button"
+              <a
                 className={`navbar__link-btn ${activeSection === link.id ? 'navbar__link-btn--active' : ''}`}
-                onClick={() => handleSectionClick(link.id)}
+                href={getSectionHref(link.id)}
+                onClick={(event) => handleSectionClick(event, link.id)}
               >
                 {link.label}
-              </button>
+              </a>
             </li>
           ))}
         </ul>

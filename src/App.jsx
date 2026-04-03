@@ -7,10 +7,40 @@ import SearchResults from './components/SearchResults'
 import { CATEGORIES, buildSectionCategories } from './services/archiveApi'
 import './App.css'
 
+const SECTION_SLUGS = {
+  home: '',
+  tv: 'tv-shows',
+  movies: 'movies',
+}
+
+function getBasePath() {
+  const baseUrl = import.meta.env.BASE_URL || '/'
+  return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+}
+
+function getPathForSection(section) {
+  const basePath = getBasePath()
+  const slug = SECTION_SLUGS[section] ?? ''
+  return slug ? `${basePath}/${slug}` : `${basePath}/`
+}
+
+function getSectionFromLocation() {
+  const basePath = getBasePath()
+  const currentPath = window.location.pathname
+  const relativePath = currentPath.startsWith(basePath)
+    ? currentPath.slice(basePath.length)
+    : currentPath
+  const normalized = relativePath.replace(/^\/+|\/+$/g, '')
+
+  if (normalized === 'tv-shows') return 'tv'
+  if (normalized === 'movies') return 'movies'
+  return 'home'
+}
+
 export default function App() {
   const [modal, setModal] = useState(null)   // { item, mode: 'play' | 'info' }
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeSection, setActiveSection] = useState('home')
+  const [activeSection, setActiveSection] = useState(getSectionFromLocation)
   const [visibleCategories, setVisibleCategories] = useState(CATEGORIES)
   const [categoriesLoading, setCategoriesLoading] = useState(false)
 
@@ -27,9 +57,30 @@ export default function App() {
   const openInfo = useCallback((item) => setModal({ item, mode: 'info' }), [])
   const closeModal = useCallback(() => setModal(null), [])
   const handleSectionChange = useCallback((section) => {
+    const nextPath = getPathForSection(section)
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({ section }, '', nextPath)
+    }
     setActiveSection(section)
     setSearchQuery('')
   }, [])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveSection(getSectionFromLocation())
+      setSearchQuery('')
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  useEffect(() => {
+    const canonicalPath = getPathForSection(activeSection)
+    if (window.location.pathname !== canonicalPath) {
+      window.history.replaceState({ section: activeSection }, '', canonicalPath)
+    }
+  }, [activeSection])
 
   useEffect(() => {
     let cancelled = false
@@ -65,6 +116,7 @@ export default function App() {
         onSearch={setSearchQuery}
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
+        getSectionHref={getPathForSection}
       />
 
       {searchQuery ? (

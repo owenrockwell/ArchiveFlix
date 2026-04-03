@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ArchiveFlix</title>
+  </head>
+  <body>
+    <script>
+      (function redirectToSpa() {
+        var basePath = '/ArchiveFlix';
+        var currentPath = window.location.pathname;
+        var relativePath = currentPath.indexOf(basePath) === 0
+          ? currentPath.slice(basePath.length)
+          : currentPath;
+        var target = basePath + '/?p=' + encodeURIComponent(relativePath || '/') + window.location.hash;
+        window.location.replace(target);
+      })();
+    </script>
+  </body>
+</html>
