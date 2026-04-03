@@ -36,7 +36,7 @@ export default function SearchResults({ query, section, onPlay, onInfo }) {
       ) : (
         <div className="search-results__grid">
           {items.map((item) => (
-            <VideoCard key={item.identifier} item={item} onPlay={onPlay} onInfo={onInfo} />
+            <VideoCard key={item.identifier} item={item} onPlay={onPlay} />
           ))}
         </div>
       )}

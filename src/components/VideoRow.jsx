@@ -71,7 +71,6 @@ export default function VideoRow({ category, categoryHref, onOpenCategory, onPla
                   key={item.identifier}
                   item={item}
                   onPlay={onPlay}
-                  onInfo={onInfo}
                 />
               ))}
         </div>

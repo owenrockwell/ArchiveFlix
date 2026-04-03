@@ -96,50 +96,6 @@
   padding: 10px;
 }
 
-.vcard__hover-actions {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.vcard__action-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.7);
-  background: rgba(30,30,30,0.8);
-  color: #fff;
-  font-size: 0.85rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s;
-  flex-shrink: 0;
-}
-
-.vcard__action-btn:hover {
-  background: rgba(255,255,255,0.15);
-  border-color: #fff;
-  transform: scale(1.1);
-}
-
-.vcard__action-btn--play {
-  background: #fff;
-  color: #000;
-  border-color: #fff;
-}
-
-.vcard__action-btn--play:hover {
-  background: rgba(255,255,255,0.85);
-  color: #000;
-}
-
-.vcard__action-btn--info {
-  margin-left: auto;
-}
-
 .vcard__hover-title {
   font-size: 0.78rem;
   font-weight: 700;
