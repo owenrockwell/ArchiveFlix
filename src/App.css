@@ -30,6 +30,12 @@ body {
   padding-top: 1rem;
 }
 
+.app__section-loading {
+  color: #a8a8a8;
+  font-size: 0.95rem;
+  padding: 0 4%;
+}
+
 /* ── Footer ── */
 .app__footer {
   padding: 2rem 4%;

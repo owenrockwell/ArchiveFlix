@@ -1,15 +1,15 @@
-// ────────────────────────────────────────────────────────────────────────────
-//  Archive.org API helpers for ArchiveFlix
-// ────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Archive.org API helpers for ArchiveFlix
+// ---------------------------------------------------------------------------
 
 const BASE_SEARCH = 'https://archive.org/advancedsearch.php'
 const BASE_METADATA = 'https://archive.org/metadata'
 const THUMB = (id) => `https://archive.org/services/img/${id}`
 const STREAM_BASE = 'https://archive.org/download'
 
-// ────────────────────────────────────────────────────────────────────────────
-//  Content filtering configuration
-// ────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Content filtering configuration
+// ---------------------------------------------------------------------------
 
 const EXPLICIT_SUBJECTS = [
   'xxx',
@@ -21,9 +21,68 @@ const EXPLICIT_SUBJECTS = [
   'obscene',
 ]
 
-const CONTENT_FILTER_QUERY = EXPLICIT_SUBJECTS.map(s => `-subject:"${s}"`).join(' ')
+const CONTENT_FILTER_QUERY = EXPLICIT_SUBJECTS.map((s) => `-subject:"${s}"`).join(' ')
 
 export { THUMB, STREAM_BASE }
+
+const SECTION_BASE_QUERY = {
+  home: 'mediatype:movies',
+  tv: 'mediatype:movies AND (subject:"television" OR title:(episode OR series OR show))',
+  movies: 'mediatype:movies AND -subject:"television"',
+}
+
+const FALLBACK_GENRES = {
+  home: ['Drama', 'Comedy', 'Documentary', 'Action', 'Horror', 'Romance', 'Adventure', 'Family'],
+  tv: ['Drama', 'Comedy', 'Sitcom', 'Crime', 'Mystery', 'Animation', 'Adventure', 'Science Fiction', 'Western', 'Family'],
+  movies: ['Drama', 'Comedy', 'Documentary', 'Horror', 'Western', 'Science Fiction', 'Adventure', 'Romance'],
+}
+
+const IGNORED_GENRES = new Set(['unknown', 'other', 'misc', 'miscellaneous', 'n/a', 'none'])
+
+function slugifyTag(tag) {
+  return tag.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+function titleCaseTag(tag) {
+  return tag
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function normalizeGenre(genre) {
+  if (!genre || typeof genre !== 'string') return null
+
+  const cleaned = genre
+    .toLowerCase()
+    .replace(/[\[\]{}()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!cleaned || cleaned.length < 3 || cleaned.length > 24) return null
+  if (/^\d+$/.test(cleaned)) return null
+  if (IGNORED_GENRES.has(cleaned)) return null
+  return cleaned
+}
+
+function escapeQueryValue(value) {
+  return value.replace(/["\\]/g, '')
+}
+
+function sectionBaseQuery(section) {
+  return SECTION_BASE_QUERY[section] ?? SECTION_BASE_QUERY.home
+}
+
+function getSectionClause(section) {
+  if (section === 'tv') {
+    return ' AND (subject:"television" OR title:(episode OR series OR show))'
+  }
+  if (section === 'movies') {
+    return ' AND -subject:"television"'
+  }
+  return ''
+}
 
 /**
  * Build a thumbnail URL with a fallback.
@@ -37,11 +96,10 @@ export const getThumbnail = (identifier) =>
  */
 function isAppropriate(item) {
   const subjects = Array.isArray(item.subject) ? item.subject.join(' ') : (item.subject || '')
-  const text = `${item.title || ''} ${item.description || ''} ${subjects}`.toLowerCase()
-  const inappropriateKeywords = [
-    'xxx', 'adult', 'explicit', 'pornography', 'erotic', 'nudity', 'obscene'
-  ]
-  return !inappropriateKeywords.some(keyword => text.includes(keyword))
+  const genres = Array.isArray(item.genre) ? item.genre.join(' ') : (item.genre || '')
+  const text = `${item.title || ''} ${item.description || ''} ${subjects} ${genres}`.toLowerCase()
+  const inappropriateKeywords = ['xxx', 'adult', 'explicit', 'pornography', 'erotic', 'nudity', 'obscene']
+  return !inappropriateKeywords.some((keyword) => text.includes(keyword))
 }
 
 /**
@@ -64,12 +122,12 @@ export async function fetchMetadata(identifier) {
 /**
  * Generic search helper.
  * @param {object} params  - key/value pairs added to the query string
- * @returns {Array}         - array of items from the response
+ * @returns {Array}        - array of items from the response
  */
 async function search(params) {
   const defaults = {
     output: 'json',
-    'fl[]': 'identifier,title,description,subject,year,runtime,creator,downloads',
+    'fl[]': 'identifier,title,description,subject,genre,year,runtime,creator,downloads',
     rows: 20,
     page: 1,
     'sort[]': 'downloads desc',
@@ -78,13 +136,12 @@ async function search(params) {
   const qs = Object.entries(merged)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&')
-  
+
   try {
     const res = await fetch(`${BASE_SEARCH}?${qs}`)
     if (!res.ok) throw new Error('Archive.org search failed')
     const data = await res.json()
     let results = data?.response?.docs ?? []
-    // Apply client-side filtering as a safety measure
     results = filterAppropriate(results)
     return results
   } catch (error) {
@@ -93,52 +150,106 @@ async function search(params) {
   }
 }
 
-// ── Category presets ──────────────────────────────────────────────────────────
+async function fetchPopularGenres(section = 'home', limit = 6) {
+  const baseQuery = sectionBaseQuery(section)
+  const docs = await search({
+    q: `${baseQuery} AND ${CONTENT_FILTER_QUERY}`,
+    rows: 400,
+    'fl[]': 'genre,downloads',
+    'sort[]': 'downloads desc',
+  })
+
+  const scores = new Map()
+
+  for (const doc of docs) {
+    const rawGenres = Array.isArray(doc.genre) ? doc.genre : [doc.genre]
+    const weight = Math.max(1, Math.log10(Number(doc.downloads || 0) + 10))
+
+    for (const raw of rawGenres) {
+      if (!raw || typeof raw !== 'string') continue
+      for (const part of raw.split(/[,;/|]/)) {
+        const genre = normalizeGenre(part)
+        if (!genre) continue
+        scores.set(genre, (scores.get(genre) || 0) + weight)
+      }
+    }
+  }
+
+  return [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([genre]) => genre)
+    .slice(0, limit)
+}
+
+export async function buildSectionCategories(section = 'home', limit = 10) {
+  const popularGenres = await fetchPopularGenres(section, limit)
+  const fallbackGenres = (FALLBACK_GENRES[section] ?? FALLBACK_GENRES.home).map((g) => g.toLowerCase())
+  const genres = [...new Set([...popularGenres, ...fallbackGenres])].slice(0, limit)
+  const baseQuery = sectionBaseQuery(section)
+
+  return genres.map((genre) => ({
+    id: `${section}_${slugifyTag(genre)}`,
+    label: titleCaseTag(genre),
+    section,
+    query: `${baseQuery} AND (genre:"${escapeQueryValue(genre)}" OR subject:"${escapeQueryValue(genre)}" OR description:(${escapeQueryValue(genre)})) AND ${CONTENT_FILTER_QUERY}`,
+  }))
+}
+
+// -- Category presets ---------------------------------------------------------
 
 export const CATEGORIES = [
   {
     id: 'feature_films',
     label: '🎬 Feature Films',
+    section: 'movies',
     query: `mediatype:movies AND subject:"feature film" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'classic_tv',
     label: '📺 Classic TV',
+    section: 'tv',
     query: `mediatype:movies AND subject:"television" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'documentaries',
     label: '🎥 Documentaries',
+    section: 'movies',
     query: `mediatype:movies AND subject:"documentary" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'animation',
     label: '🎭 Animation & Cartoons',
+    section: 'movies',
     query: `collection:animationandcartoons AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'short_films',
     label: '🎞 Short Films',
+    section: 'movies',
     query: `mediatype:movies AND subject:"short film" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'horror',
     label: '👻 Horror',
+    section: 'movies',
     query: `mediatype:movies AND subject:"horror" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'science_fiction',
     label: '🚀 Science Fiction',
+    section: 'movies',
     query: `mediatype:movies AND subject:"science fiction" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'comedy',
     label: '😂 Comedy',
+    section: 'movies',
     query: `mediatype:movies AND (subject:"comedy" OR description:"comedy") AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'silent_films',
     label: '🎩 Silent Films',
+    section: 'movies',
     query: `collection:silenthalloffame AND ${CONTENT_FILTER_QUERY}`,
   },
 ]
@@ -146,8 +257,11 @@ export const CATEGORIES = [
 /**
  * Fetch videos for a specific category.
  */
-export async function fetchCategory(categoryId, rows = 24) {
-  const cat = CATEGORIES.find((c) => c.id === categoryId)
+export async function fetchCategory(categoryId, rows = 40) {
+  const cat =
+    typeof categoryId === 'string'
+      ? CATEGORIES.find((c) => c.id === categoryId)
+      : categoryId
   if (!cat) throw new Error(`Unknown category: ${categoryId}`)
   return search({ q: cat.query, rows })
 }
@@ -155,9 +269,10 @@ export async function fetchCategory(categoryId, rows = 24) {
 /**
  * Search across all video content.
  */
-export async function searchVideos(query, rows = 40) {
+export async function searchVideos(query, rows = 40, section = 'home') {
+  const sectionClause = getSectionClause(section)
   return search({
-    q: `mediatype:movies AND (title:(${query}) OR subject:(${query})) AND ${CONTENT_FILTER_QUERY}`,
+    q: `mediatype:movies${sectionClause} AND (title:(${query}) OR subject:(${query})) AND ${CONTENT_FILTER_QUERY}`,
     rows,
     'sort[]': 'downloads desc',
   })
@@ -166,13 +281,18 @@ export async function searchVideos(query, rows = 40) {
 /**
  * Fetch a curated hero item by picking the most-downloaded item from feature films.
  */
-export async function fetchHeroItem() {
+export async function fetchHeroItem(section = 'home') {
+  const heroQueryBySection = {
+    tv: `mediatype:movies AND subject:"television" AND year:[1930 TO 1995] AND ${CONTENT_FILTER_QUERY}`,
+    movies: `mediatype:movies AND subject:"feature film" AND year:[1930 TO 1980] AND ${CONTENT_FILTER_QUERY}`,
+    home: `mediatype:movies AND subject:"feature film" AND year:[1930 TO 1980] AND ${CONTENT_FILTER_QUERY}`,
+  }
+
   const items = await search({
-    q: `mediatype:movies AND subject:"feature film" AND year:[1930 TO 1980] AND ${CONTENT_FILTER_QUERY}`,
+    q: heroQueryBySection[section] ?? heroQueryBySection.home,
     rows: 20,
     'sort[]': 'downloads desc',
   })
-  // Pick a semi-random item from top results so it feels fresh
   const idx = Math.floor(Math.random() * Math.min(items.length, 10))
   return items[idx] ?? null
 }
@@ -186,21 +306,14 @@ export async function getStreamUrl(identifier) {
     const meta = await fetchMetadata(identifier)
     const files = meta?.files ?? []
 
-    // Archive.org transcodes originals into derivative mp4s for browser streaming.
-    // Prefer those first; fall back to any mp4, then other browser-native formats.
-    // Avoid avi / mov / mkv – browsers cannot natively stream these.
-
-    // 1. Derivative mp4 (H.264 web-optimised transcode)
     const derivMp4 = files.find(
       (f) => f.name?.toLowerCase().endsWith('.mp4') && f.source === 'derivative'
     )
     if (derivMp4) return `${STREAM_BASE}/${identifier}/${encodeURIComponent(derivMp4.name)}`
 
-    // 2. Any mp4 (original or unknown source)
     const anyMp4 = files.find((f) => f.name?.toLowerCase().endsWith('.mp4'))
     if (anyMp4) return `${STREAM_BASE}/${identifier}/${encodeURIComponent(anyMp4.name)}`
 
-    // 3. Other browser-playable formats
     for (const ext of ['webm', 'ogv', 'mpeg', 'mpg']) {
       const match = files.find((f) => f.name?.toLowerCase().endsWith(`.${ext}`))
       if (match) return `${STREAM_BASE}/${identifier}/${encodeURIComponent(match.name)}`

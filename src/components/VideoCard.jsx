@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FiPlay, FiPlus, FiInfo, FiThumbsUp } from 'react-icons/fi'
+import { FiPlay, FiInfo, FiThumbsUp } from 'react-icons/fi'
 import { getThumbnail } from '../services/archiveApi'
 import './VideoCard.css'
 
@@ -45,14 +45,6 @@ export default function VideoCard({ item, onPlay, onInfo }) {
               aria-label="Play"
             >
               <FiPlay />
-            </button>
-            <button
-              className="vcard__action-btn"
-              title="Add to My List"
-              aria-label="Add to list"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <FiPlus />
             </button>
             <button
               className="vcard__action-btn"

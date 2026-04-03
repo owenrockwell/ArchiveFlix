@@ -12,11 +12,12 @@ export default function VideoRow({ category, onPlay, onInfo }) {
   const [canScrollRight, setCanScrollRight] = useState(true)
 
   useEffect(() => {
-    fetchCategory(category.id)
+    setLoading(true)
+    fetchCategory(category)
       .then(setItems)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [category.id])
+  }, [category.id, category.query])
 
   function updateScrollButtons() {
     const el = rowRef.current

@@ -3,14 +3,14 @@ import { FiPlay, FiInfo, FiRefreshCw } from 'react-icons/fi'
 import { fetchHeroItem, getThumbnail } from '../services/archiveApi'
 import './Hero.css'
 
-export default function Hero({ onPlay, onInfo }) {
+export default function Hero({ section, onPlay, onInfo }) {
   const [item, setItem] = useState(null)
   const [loading, setLoading] = useState(true)
 
   async function loadHero() {
     setLoading(true)
     try {
-      const data = await fetchHeroItem()
+      const data = await fetchHeroItem(section)
       setItem(data)
     } catch (e) {
       console.error(e)
@@ -21,7 +21,7 @@ export default function Hero({ onPlay, onInfo }) {
 
   useEffect(() => {
     loadHero()
-  }, [])
+  }, [section])
 
   if (loading) {
     return (

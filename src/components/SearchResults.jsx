@@ -4,24 +4,27 @@ import { searchVideos } from '../services/archiveApi'
 import VideoCard from './VideoCard'
 import './SearchResults.css'
 
-export default function SearchResults({ query, onPlay, onInfo }) {
+export default function SearchResults({ query, section, onPlay, onInfo }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
+
+  const sectionLabel =
+    section === 'tv' ? 'TV Shows' : section === 'movies' ? 'Movies' : 'All Titles'
 
   useEffect(() => {
     if (!query) { setItems([]); return }
     setLoading(true)
-    searchVideos(query)
+    searchVideos(query, 40, section)
       .then(setItems)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [query])
+  }, [query, section])
 
   return (
     <section className="search-results">
       <h2 className="search-results__heading">
         <FiSearch />
-        Results for &ldquo;{query}&rdquo;
+        {sectionLabel} results for &ldquo;{query}&rdquo;
       </h2>
 
       {loading ? (

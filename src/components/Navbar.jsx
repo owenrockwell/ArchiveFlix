@@ -2,7 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import { FiSearch, FiX, FiBell } from 'react-icons/fi'
 import './Navbar.css'
 
-export default function Navbar({ onSearch }) {
+const NAV_LINKS = [
+  { id: 'home', label: 'Home' },
+  { id: 'tv', label: 'TV Shows' },
+  { id: 'movies', label: 'Movies' },
+]
+
+export default function Navbar({ onSearch, activeSection, onSectionChange }) {
   const [scrolled, setScrolled] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -29,16 +35,29 @@ export default function Navbar({ onSearch }) {
     onSearch('')
   }
 
+  function handleSectionClick(section) {
+    onSectionChange(section)
+    setQuery('')
+    setSearchOpen(false)
+    onSearch('')
+  }
+
   return (
     <nav className={`navbar ${scrolled ? 'navbar--scrolled' : ''}`}>
       <div className="navbar__left">
         <span className="navbar__logo">ArchiveFlix</span>
         <ul className="navbar__links">
-          <li>Home</li>
-          <li>TV Shows</li>
-          <li>Movies</li>
-          <li>New &amp; Popular</li>
-          <li>My List</li>
+          {NAV_LINKS.map((link) => (
+            <li key={link.id}>
+              <button
+                type="button"
+                className={`navbar__link-btn ${activeSection === link.id ? 'navbar__link-btn--active' : ''}`}
+                onClick={() => handleSectionClick(link.id)}
+              >
+                {link.label}
+              </button>
+            </li>
+          ))}
         </ul>
       </div>
 
@@ -81,10 +100,6 @@ export default function Navbar({ onSearch }) {
         <button className="navbar__icon-btn" aria-label="Notifications">
           <FiBell />
         </button>
-
-        <div className="navbar__avatar" title="Profile">
-          <span>AF</span>
-        </div>
       </div>
     </nav>
   )
