@@ -6,6 +6,7 @@ const BASE_SEARCH = 'https://archive.org/advancedsearch.php'
 const BASE_METADATA = 'https://archive.org/metadata'
 const THUMB = (id) => `https://archive.org/services/img/${id}`
 const STREAM_BASE = 'https://archive.org/download'
+const CACHE_PREFIX = 'archiveflix:'
 
 // ---------------------------------------------------------------------------
 // Content filtering configuration
@@ -88,6 +89,23 @@ function normalizeGenre(genre) {
 
 function escapeQueryValue(value) {
   return value.replace(/["\\]/g, '')
+}
+
+function getSessionCache(key) {
+  try {
+    const raw = sessionStorage.getItem(`${CACHE_PREFIX}${key}`)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function setSessionCache(key, value) {
+  try {
+    sessionStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(value))
+  } catch {
+    // Ignore quota or availability failures.
+  }
 }
 
 function getItemText(item) {
@@ -182,9 +200,15 @@ function filterAppropriate(items) {
  * Returns the full metadata object from archive.org.
  */
 export async function fetchMetadata(identifier) {
+  const cacheKey = `metadata:${identifier}`
+  const cached = getSessionCache(cacheKey)
+  if (cached) return cached
+
   const res = await fetch(`${BASE_METADATA}/${identifier}`)
   if (!res.ok) throw new Error(`Metadata fetch failed for ${identifier}`)
-  return res.json()
+  const data = await res.json()
+  setSessionCache(cacheKey, data)
+  return data
 }
 
 /**
@@ -204,6 +228,9 @@ async function search(params) {
   const qs = Object.entries(merged)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&')
+  const cacheKey = `search:${qs}`
+  const cached = getSessionCache(cacheKey)
+  if (cached) return cached
 
   try {
     const res = await fetch(`${BASE_SEARCH}?${qs}`)
@@ -211,6 +238,7 @@ async function search(params) {
     const data = await res.json()
     let results = data?.response?.docs ?? []
     results = filterAppropriate(results)
+    setSessionCache(cacheKey, results)
     return results
   } catch (error) {
     console.error('Search error:', error)
@@ -250,17 +278,24 @@ async function fetchPopularGenres(section = 'home', limit = 6) {
 }
 
 export async function buildSectionCategories(section = 'home', limit = 10) {
+  const cacheKey = `section-categories:${section}:${limit}`
+  const cached = getSessionCache(cacheKey)
+  if (cached) return cached
+
   const popularGenres = await fetchPopularGenres(section, limit)
   const fallbackGenres = (FALLBACK_GENRES[section] ?? FALLBACK_GENRES.home).map((g) => g.toLowerCase())
   const genres = [...new Set([...popularGenres, ...fallbackGenres])].slice(0, limit)
   const baseQuery = sectionBaseQuery(section)
 
-  return genres.map((genre) => ({
+  const categories = genres.map((genre) => ({
     id: `${section}_${slugifyTag(genre)}`,
+    slug: slugifyTag(genre).replace(/_/g, '-'),
     label: titleCaseTag(genre),
     section,
     query: `${baseQuery} AND (genre:"${escapeQueryValue(genre)}" OR subject:"${escapeQueryValue(genre)}" OR description:(${escapeQueryValue(genre)})) AND ${CONTENT_FILTER_QUERY}`,
   }))
+  setSessionCache(cacheKey, categories)
+  return categories
 }
 
 // -- Category presets ---------------------------------------------------------
@@ -268,54 +303,63 @@ export async function buildSectionCategories(section = 'home', limit = 10) {
 export const CATEGORIES = [
   {
     id: 'feature_films',
+    slug: 'feature-films',
     label: '🎬 Feature Films',
     section: 'movies',
     query: `mediatype:movies AND subject:"feature film" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'classic_tv',
+    slug: 'classic-tv',
     label: '📺 Classic TV',
     section: 'tv',
     query: `mediatype:movies AND subject:"television" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'documentaries',
+    slug: 'documentaries',
     label: '🎥 Documentaries',
     section: 'movies',
     query: `mediatype:movies AND subject:"documentary" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'animation',
+    slug: 'animation-cartoons',
     label: '🎭 Animation & Cartoons',
     section: 'movies',
     query: `collection:animationandcartoons AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'short_films',
+    slug: 'short-films',
     label: '🎞 Short Films',
     section: 'movies',
     query: `mediatype:movies AND subject:"short film" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'horror',
+    slug: 'horror',
     label: '👻 Horror',
     section: 'movies',
     query: `mediatype:movies AND subject:"horror" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'science_fiction',
+    slug: 'science-fiction',
     label: '🚀 Science Fiction',
     section: 'movies',
     query: `mediatype:movies AND subject:"science fiction" AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'comedy',
+    slug: 'comedy',
     label: '😂 Comedy',
     section: 'movies',
     query: `mediatype:movies AND (subject:"comedy" OR description:"comedy") AND ${CONTENT_FILTER_QUERY}`,
   },
   {
     id: 'silent_films',
+    slug: 'silent-films',
     label: '🎩 Silent Films',
     section: 'movies',
     query: `collection:silenthalloffame AND ${CONTENT_FILTER_QUERY}`,
@@ -351,6 +395,10 @@ export async function searchVideos(query, rows = 40, section = 'home') {
  * Fetch a curated hero item by picking the most-downloaded item from feature films.
  */
 export async function fetchHeroItem(section = 'home') {
+  const cacheKey = `hero:${section}`
+  const cached = getSessionCache(cacheKey)
+  if (cached) return cached
+
   const heroQueryBySection = {
     tv: `mediatype:movies AND subject:"television" AND year:[1930 TO 1995] AND ${CONTENT_FILTER_QUERY}`,
     movies: `mediatype:movies AND subject:"feature film" AND year:[1930 TO 1980] AND ${CONTENT_FILTER_QUERY}`,
@@ -363,7 +411,9 @@ export async function fetchHeroItem(section = 'home') {
     'sort[]': 'downloads desc',
   })
   const idx = Math.floor(Math.random() * Math.min(items.length, 10))
-  return items[idx] ?? null
+  const item = items[idx] ?? null
+  setSessionCache(cacheKey, item)
+  return item
 }
 
 /**
@@ -372,20 +422,36 @@ export async function fetchHeroItem(section = 'home') {
  */
 export async function getStreamUrl(identifier) {
   try {
+    const cacheKey = `stream:${identifier}`
+    const cached = getSessionCache(cacheKey)
+    if (cached) return cached
+
     const meta = await fetchMetadata(identifier)
     const files = meta?.files ?? []
 
     const derivMp4 = files.find(
       (f) => f.name?.toLowerCase().endsWith('.mp4') && f.source === 'derivative'
     )
-    if (derivMp4) return `${STREAM_BASE}/${identifier}/${encodeURIComponent(derivMp4.name)}`
+    if (derivMp4) {
+      const url = `${STREAM_BASE}/${identifier}/${encodeURIComponent(derivMp4.name)}`
+      setSessionCache(cacheKey, url)
+      return url
+    }
 
     const anyMp4 = files.find((f) => f.name?.toLowerCase().endsWith('.mp4'))
-    if (anyMp4) return `${STREAM_BASE}/${identifier}/${encodeURIComponent(anyMp4.name)}`
+    if (anyMp4) {
+      const url = `${STREAM_BASE}/${identifier}/${encodeURIComponent(anyMp4.name)}`
+      setSessionCache(cacheKey, url)
+      return url
+    }
 
     for (const ext of ['webm', 'ogv', 'mpeg', 'mpg']) {
       const match = files.find((f) => f.name?.toLowerCase().endsWith(`.${ext}`))
-      if (match) return `${STREAM_BASE}/${identifier}/${encodeURIComponent(match.name)}`
+      if (match) {
+        const url = `${STREAM_BASE}/${identifier}/${encodeURIComponent(match.name)}`
+        setSessionCache(cacheKey, url)
+        return url
+      }
     }
   } catch (e) {
     console.warn('getStreamUrl error', e)

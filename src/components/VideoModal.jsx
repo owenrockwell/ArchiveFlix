@@ -15,6 +15,7 @@ import './VideoModal.css'
 export default function VideoModal({ item, mode, onClose }) {
   const [streamUrl, setStreamUrl] = useState(null)
   const [loadingStream, setLoadingStream] = useState(true)
+  const [loadingVideo, setLoadingVideo] = useState(mode === 'play')
   const [playing, setPlaying] = useState(false)
   const [muted, setMuted] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -36,6 +37,7 @@ export default function VideoModal({ item, mode, onClose }) {
   }, [])
 
   useEffect(() => {
+    setLoadingVideo(mode === 'play')
     getStreamUrl(item.identifier)
       .then((url) => {
         setStreamUrl(url)
@@ -48,6 +50,7 @@ export default function VideoModal({ item, mode, onClose }) {
   // Auto-play when stream is ready and we're in play mode
   useEffect(() => {
     if (streamUrl && mode === 'play' && videoRef.current) {
+      setLoadingVideo(true)
       videoRef.current.play().then(() => setPlaying(true)).catch(() => {})
     }
   }, [streamUrl, mode])
@@ -62,6 +65,7 @@ export default function VideoModal({ item, mode, onClose }) {
     const v = videoRef.current
     if (!v) return
     if (v.paused) {
+      setLoadingVideo(true)
       v.play().then(() => setPlaying(true))
     } else {
       v.pause()
@@ -137,7 +141,7 @@ export default function VideoModal({ item, mode, onClose }) {
           <div className="vmodal__poster-overlay" />
 
           {/* Loading spinner */}
-          {loadingStream && (
+          {(loadingStream || (streamUrl && loadingVideo && !streamError)) && (
             <div className="vmodal__spinner">
               <FiLoader className="spin" />
             </div>
@@ -161,9 +165,18 @@ export default function VideoModal({ item, mode, onClose }) {
               className="vmodal__video"
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={() => setDuration(videoRef.current?.duration)}
-              onPlay={() => setPlaying(true)}
+              onLoadedData={() => setLoadingVideo(false)}
+              onCanPlay={() => setLoadingVideo(false)}
+              onWaiting={() => setLoadingVideo(true)}
+              onPlay={() => {
+                setPlaying(true)
+                setLoadingVideo(false)
+              }}
               onPause={() => setPlaying(false)}
-              onError={() => setStreamError(true)}
+              onError={() => {
+                setStreamError(true)
+                setLoadingVideo(false)
+              }}
               playsInline
             />
           )}

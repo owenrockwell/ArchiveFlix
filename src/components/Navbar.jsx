@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { FiSearch, FiX, FiBell } from 'react-icons/fi'
+import { FiSearch, FiX } from 'react-icons/fi'
 import './Navbar.css'
 
 const NAV_LINKS = [
-  { id: 'home', label: 'Home' },
   { id: 'tv', label: 'TV Shows' },
   { id: 'movies', label: 'Movies' },
 ]
@@ -50,7 +49,7 @@ export default function Navbar({ onSearch, searchQuery, activeSection, onSection
       <div className="navbar__left">
         <a
           className="navbar__logo"
-          href={getSectionHref('home', searchQuery)}
+          href={getSectionHref('home')}
           onClick={(event) => handleSectionClick(event, 'home')}
         >
           ArchiveFlix
@@ -60,7 +59,7 @@ export default function Navbar({ onSearch, searchQuery, activeSection, onSection
             <li key={link.id}>
               <a
                 className={`navbar__link-btn ${activeSection === link.id ? 'navbar__link-btn--active' : ''}`}
-                href={getSectionHref(link.id, searchQuery)}
+                href={getSectionHref(link.id)}
                 onClick={(event) => handleSectionClick(event, link.id)}
               >
                 {link.label}
@@ -105,10 +104,6 @@ export default function Navbar({ onSearch, searchQuery, activeSection, onSection
             </>
           )}
         </form>
-
-        <button className="navbar__icon-btn" aria-label="Notifications">
-          <FiBell />
-        </button>
       </div>
     </nav>
   )

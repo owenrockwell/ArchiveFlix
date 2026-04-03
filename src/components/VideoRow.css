@@ -12,6 +12,15 @@
   letter-spacing: 0.02em;
 }
 
+.vrow__title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.vrow__title-link:hover {
+  color: #fff;
+}
+
 .vrow__wrapper {
   position: relative;
 }

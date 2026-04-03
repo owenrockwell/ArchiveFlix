@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import VideoRow from './components/VideoRow'
 import VideoModal from './components/VideoModal'
 import SearchResults from './components/SearchResults'
+import CategoryResults from './components/CategoryResults'
 import { CATEGORIES, buildSectionCategories } from './services/archiveApi'
 import './App.css'
 
@@ -24,14 +25,23 @@ function getPathForSection(section) {
   return slug ? `${basePath}/${slug}` : `${basePath}/`
 }
 
+function getPathForCategory(section, categorySlug) {
+  const sectionPath = getPathForSection(section).replace(/\/$/, '')
+  return `${sectionPath}/${categorySlug}`
+}
+
 function getSearchQueryFromLocation() {
   const params = new URLSearchParams(window.location.search)
   return params.get('q')?.trim() ?? ''
 }
 
-function buildUrl(section, query = '') {
-  const path = getPathForSection(section)
+function buildUrl(section, query = '', categorySlug = '') {
   const trimmedQuery = query.trim()
+  const path = trimmedQuery
+    ? getPathForSection(section)
+    : categorySlug
+      ? getPathForCategory(section, categorySlug)
+      : getPathForSection(section)
 
   if (!trimmedQuery) return path
 
@@ -40,23 +50,43 @@ function buildUrl(section, query = '') {
   return `${path}?${params.toString()}`
 }
 
-function getSectionFromLocation() {
+function getRouteFromLocation() {
   const basePath = getBasePath()
   const currentPath = window.location.pathname
   const relativePath = currentPath.startsWith(basePath)
     ? currentPath.slice(basePath.length)
     : currentPath
-  const normalized = relativePath.replace(/^\/+|\/+$/g, '')
+  const segments = relativePath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean)
 
-  if (normalized === 'tv-shows') return 'tv'
-  if (normalized === 'movies') return 'movies'
-  return 'home'
+  if (segments[0] === 'tv-shows') {
+    return { section: 'tv', categorySlug: segments[1] ?? '', query: getSearchQueryFromLocation() }
+  }
+
+  if (segments[0] === 'movies') {
+    return { section: 'movies', categorySlug: segments[1] ?? '', query: getSearchQueryFromLocation() }
+  }
+
+  return { section: 'home', categorySlug: segments[0] ?? '', query: getSearchQueryFromLocation() }
+}
+
+function ensureCategorySlug(category) {
+  if (category.slug) return category.slug
+  if (category.label) {
+    return category.label
+      .replace(/^[^A-Za-z0-9]+/, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  }
+  return category.id.replace(/_/g, '-')
 }
 
 export default function App() {
+  const initialRoute = getRouteFromLocation()
   const [modal, setModal] = useState(null)   // { item, mode: 'play' | 'info' }
-  const [searchQuery, setSearchQuery] = useState(getSearchQueryFromLocation)
-  const [activeSection, setActiveSection] = useState(getSectionFromLocation)
+  const [searchQuery, setSearchQuery] = useState(initialRoute.query)
+  const [activeSection, setActiveSection] = useState(initialRoute.section)
+  const [activeCategorySlug, setActiveCategorySlug] = useState(initialRoute.categorySlug)
   const [visibleCategories, setVisibleCategories] = useState(CATEGORIES)
   const [categoriesLoading, setCategoriesLoading] = useState(false)
 
@@ -73,27 +103,43 @@ export default function App() {
   const openInfo = useCallback((item) => setModal({ item, mode: 'info' }), [])
   const closeModal = useCallback(() => setModal(null), [])
   const handleSectionChange = useCallback((section) => {
-    const nextUrl = buildUrl(section, searchQuery)
+    const nextUrl = getPathForSection(section)
     const currentUrl = `${window.location.pathname}${window.location.search}`
     if (currentUrl !== nextUrl) {
-      window.history.pushState({ section, query: searchQuery }, '', nextUrl)
+      window.history.pushState({ section, categorySlug: '', query: '' }, '', nextUrl)
     }
     setActiveSection(section)
-  }, [searchQuery])
+    setActiveCategorySlug('')
+    setSearchQuery('')
+  }, [])
+
+  const handleCategoryChange = useCallback((category) => {
+    const categorySlug = ensureCategorySlug(category)
+    const nextUrl = getPathForCategory(activeSection, categorySlug)
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    if (currentUrl !== nextUrl) {
+      window.history.pushState({ section: activeSection, categorySlug, query: '' }, '', nextUrl)
+    }
+    setActiveCategorySlug(categorySlug)
+    setSearchQuery('')
+  }, [activeSection])
 
   const handleSearchChange = useCallback((query) => {
     const nextUrl = buildUrl(activeSection, query)
     const currentUrl = `${window.location.pathname}${window.location.search}`
     if (currentUrl !== nextUrl) {
-      window.history.pushState({ section: activeSection, query }, '', nextUrl)
+      window.history.pushState({ section: activeSection, categorySlug: '', query }, '', nextUrl)
     }
+    setActiveCategorySlug('')
     setSearchQuery(query)
   }, [activeSection])
 
   useEffect(() => {
     const handlePopState = () => {
-      setActiveSection(getSectionFromLocation())
-      setSearchQuery(getSearchQueryFromLocation())
+      const route = getRouteFromLocation()
+      setActiveSection(route.section)
+      setActiveCategorySlug(route.categorySlug)
+      setSearchQuery(route.query)
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -101,12 +147,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const canonicalUrl = buildUrl(activeSection, searchQuery)
+    const canonicalUrl = buildUrl(activeSection, searchQuery, activeCategorySlug)
     const currentUrl = `${window.location.pathname}${window.location.search}`
     if (currentUrl !== canonicalUrl) {
-      window.history.replaceState({ section: activeSection, query: searchQuery }, '', canonicalUrl)
+      window.history.replaceState(
+        { section: activeSection, categorySlug: activeCategorySlug, query: searchQuery },
+        '',
+        canonicalUrl
+      )
     }
-  }, [activeSection, searchQuery])
+  }, [activeSection, activeCategorySlug, searchQuery])
 
   useEffect(() => {
     let cancelled = false
@@ -115,7 +165,9 @@ export default function App() {
 
     buildSectionCategories(activeSection, 10)
       .then((cats) => {
-        if (!cancelled) setVisibleCategories(cats)
+        if (!cancelled) {
+          setVisibleCategories(cats.map((cat) => ({ ...cat, slug: ensureCategorySlug(cat) })))
+        }
       })
       .catch((err) => {
         console.error('Failed to load genres', err)
@@ -124,7 +176,7 @@ export default function App() {
             activeSection === 'home'
               ? CATEGORIES
               : CATEGORIES.filter((cat) => cat.section === activeSection)
-          setVisibleCategories(fallback)
+          setVisibleCategories(fallback.map((cat) => ({ ...cat, slug: ensureCategorySlug(cat) })))
         }
       })
       .finally(() => {
@@ -136,6 +188,11 @@ export default function App() {
     }
   }, [activeSection])
 
+  const activeCategory = useMemo(
+    () => visibleCategories.find((category) => category.slug === activeCategorySlug) ?? null,
+    [visibleCategories, activeCategorySlug]
+  )
+
   return (
     <div className="app">
       <Navbar
@@ -143,13 +200,20 @@ export default function App() {
         searchQuery={searchQuery}
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
-        getSectionHref={buildUrl}
+        getSectionHref={getPathForSection}
       />
 
       {searchQuery ? (
         <SearchResults
           query={searchQuery}
           section={activeSection}
+          onPlay={openPlay}
+          onInfo={openInfo}
+        />
+      ) : activeCategorySlug ? (
+        <CategoryResults
+          category={activeCategory}
+          loading={categoriesLoading}
           onPlay={openPlay}
           onInfo={openInfo}
         />
@@ -165,6 +229,8 @@ export default function App() {
                 <VideoRow
                   key={cat.id}
                   category={cat}
+                  categoryHref={getPathForCategory(activeSection, cat.slug)}
+                  onOpenCategory={handleCategoryChange}
                   onPlay={openPlay}
                   onInfo={openInfo}
                 />

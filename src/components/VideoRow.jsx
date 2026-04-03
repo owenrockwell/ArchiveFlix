@@ -4,7 +4,7 @@ import { fetchCategory } from '../services/archiveApi'
 import VideoCard from './VideoCard'
 import './VideoRow.css'
 
-export default function VideoRow({ category, onPlay, onInfo }) {
+export default function VideoRow({ category, categoryHref, onOpenCategory, onPlay, onInfo }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const rowRef = useRef(null)
@@ -33,9 +33,18 @@ export default function VideoRow({ category, onPlay, onInfo }) {
     setTimeout(updateScrollButtons, 400)
   }
 
+  function handleCategoryClick(event) {
+    event.preventDefault()
+    onOpenCategory(category)
+  }
+
   return (
     <section className="vrow">
-      <h2 className="vrow__title">{category.label}</h2>
+      <h2 className="vrow__title">
+        <a className="vrow__title-link" href={categoryHref} onClick={handleCategoryClick}>
+          {category.label}
+        </a>
+      </h2>
 
       <div className="vrow__wrapper">
         {canScrollLeft && (
