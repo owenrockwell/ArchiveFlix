@@ -8,6 +8,7 @@ export default function VideoCard({ item, onPlay }) {
   const thumb = getThumbnail(item.identifier)
   const title = item.title ?? 'Untitled'
   const year = item.year ?? ''
+  const runtime = item.runtime ?? ''
 
   return (
     <div
@@ -23,39 +24,40 @@ export default function VideoCard({ item, onPlay }) {
         }
       }}
     >
-      {/* Thumbnail */}
-      <div className="vcard__thumb">
-        {!imgError ? (
-          <img
-            src={thumb}
-            alt={title}
-            loading="lazy"
-            onError={() => setImgError(true)}
+      <div className="vcard__media">
+        <div className="vcard__thumb">
+          {!imgError ? (
+            <img
+              src={thumb}
+              alt={title}
+              loading="lazy"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className="vcard__no-img">
+              <span>{title.slice(0, 2).toUpperCase()}</span>
+            </div>
+          )}
+          <div className="vcard__gradient" />
+        </div>
+
+        <div className="vcard__hover">
+          <div
+            className="vcard__hover-bg"
+            style={{ backgroundImage: !imgError ? `url(${thumb})` : undefined }}
           />
-        ) : (
-          <div className="vcard__no-img">
-            <span>{title.slice(0, 2).toUpperCase()}</span>
-          </div>
-        )}
-        <div className="vcard__gradient" />
+          <div className="vcard__hover-overlay" />
+        </div>
       </div>
 
-      {/* Hover panel */}
-      <div className="vcard__hover">
-        <div
-          className="vcard__hover-bg"
-          style={{ backgroundImage: !imgError ? `url(${thumb})` : undefined }}
-        />
-        <div className="vcard__hover-overlay" />
-        <div className="vcard__hover-content">
-          <p className="vcard__hover-title">{title}</p>
-          <div className="vcard__hover-meta">
+      <div className="vcard__body">
+        <p className="vcard__title">{title}</p>
+        {(year || runtime) && (
+          <div className="vcard__meta">
             {year && <span className="vcard__year">{year}</span>}
-            {item.runtime && (
-              <span className="vcard__runtime">{item.runtime}</span>
-            )}
+            {runtime && <span className="vcard__runtime">{runtime}</span>}
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

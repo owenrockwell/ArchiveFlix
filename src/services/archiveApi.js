@@ -516,6 +516,45 @@ function parseEpisodeInfo(filename) {
   return { number: number ?? 0, title, hasMarker }
 }
 
+function normalizeEpisodeKey(episode) {
+  if (episode.hasMarker) return `marker:${episode.title.toLowerCase()}`
+
+  return String(episode.title || '')
+    .toLowerCase()
+    .replace(/\.ia$/i, '')
+    .replace(/[_\-. ](?:512kb|256kb|128kb|low|med|medium|high|hq|hd|edit|dubbed|dub)$/, '')
+    .replace(/[_\-. ]+/g, ' ')
+    .trim()
+}
+
+function getEpisodeRank(episode) {
+  const lowerName = String(episode.name || '').toLowerCase()
+  let score = 0
+
+  if (episode.hasMarker) score += 1000
+  if (!lowerName.includes('.ia.')) score += 200
+  if (!lowerName.endsWith('.ogv') && !lowerName.endsWith('.mpeg') && !lowerName.endsWith('.mpg')) score += 50
+  score += Number(episode.size || 0) / 1000000
+
+  return score
+}
+
+function dedupeEpisodes(episodes) {
+  const bestByKey = new Map()
+
+  for (const episode of episodes) {
+    const key = normalizeEpisodeKey(episode)
+    if (!key) continue
+
+    const existing = bestByKey.get(key)
+    if (!existing || getEpisodeRank(episode) > getEpisodeRank(existing)) {
+      bestByKey.set(key, episode)
+    }
+  }
+
+  return [...bestByKey.values()]
+}
+
 function looksLikeSeries(item, episodes = []) {
   const structuredEpisodes = episodes.filter((episode) => episode.hasMarker)
   const distinctStructuredTitles = new Set(structuredEpisodes.map((episode) => episode.title)).size
@@ -530,7 +569,7 @@ function looksLikeSeries(item, episodes = []) {
  */
 export async function getEpisodes(identifier) {
   try {
-    const cacheKey = `episodes:v2:${identifier}`
+    const cacheKey = `episodes:v3:${identifier}`
     const cached = getSessionCache(cacheKey)
     if (cached) return cached
 
@@ -544,16 +583,20 @@ export async function getEpisodes(identifier) {
         name: f.name,
         size: f.size ?? 0,
         mtime: f.mtime ?? 0,
+        source: f.source ?? '',
         ...parseEpisodeInfo(f.name),
       }))
+
+    const dedupedFiles = dedupeEpisodes(videoFiles)
+      .filter((episode) => !String(episode.name).toLowerCase().endsWith('.ia.mp4'))
       .sort((a, b) => {
         // Sort by episode number if available, otherwise by filename
         if (a.number && b.number) return a.number - b.number
         return a.name.localeCompare(b.name)
       })
 
-    setSessionCache(cacheKey, videoFiles)
-    return videoFiles
+    setSessionCache(cacheKey, dedupedFiles)
+    return dedupedFiles
   } catch (e) {
     console.warn('getEpisodes error', e)
     return []

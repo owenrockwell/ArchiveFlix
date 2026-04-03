@@ -27,11 +27,11 @@
 
 .vrow__track {
   display: flex;
-  gap: 6px;
+  gap: 14px;
   overflow-x: auto;
   overflow-y: visible;
   scroll-snap-type: x mandatory;
-  padding: 28px 4px; /* vertical padding so scaled cards aren't clipped */
+  padding: 18px 4px 26px; /* vertical padding so scaled cards and titles aren't clipped */
   scrollbar-width: none;
 }
 
@@ -80,9 +80,9 @@
 /* Loading skeletons */
 .vrow__skeleton {
   flex: 0 0 auto;
-  width: 200px;
+  width: 220px;
   aspect-ratio: 16/9;
-  border-radius: 6px;
+  border-radius: 8px;
   background: linear-gradient(
     90deg,
     #1e1e1e 25%,

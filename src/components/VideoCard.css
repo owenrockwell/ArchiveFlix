@@ -1,8 +1,8 @@
 .vcard {
   position: relative;
   flex: 0 0 auto;
-  width: 200px;
-  border-radius: 6px;
+  width: 220px;
+  border-radius: 8px;
   overflow: visible;
   cursor: pointer;
   transition: transform 0.25s, z-index 0s 0.25s;
@@ -10,9 +10,13 @@
 }
 
 .vcard:hover {
-  transform: scale(1.35);
+  transform: scale(1.12);
   z-index: 10;
   transition: transform 0.25s, z-index 0s 0s;
+}
+
+.vcard__media {
+  position: relative;
 }
 
 /* Thumbnail */
@@ -21,7 +25,7 @@
   width: 100%;
   aspect-ratio: 16/9;
   background: #1a1a1a;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -60,7 +64,7 @@
 .vcard__hover {
   position: absolute;
   inset: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
@@ -87,32 +91,46 @@
   background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.3) 60%, transparent 100%);
 }
 
-.vcard__hover-content {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  padding: 10px;
+.vcard__body {
+  padding: 10px 2px 0;
 }
 
-.vcard__hover-title {
-  font-size: 0.78rem;
+.vcard__title {
+  margin: 0;
+  font-size: 0.92rem;
   font-weight: 700;
-  color: #fff;
-  margin: 0 0 4px;
-  white-space: nowrap;
+  line-height: 1.35;
+  color: #f1f1f1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.vcard__hover-meta {
+.vcard__meta {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.vcard__runtime {
+  margin-left: auto;
 }
 
 .vcard__year,
 .vcard__runtime {
   font-size: 0.7rem;
   color: #aaa;
+}
+
+@media (max-width: 600px) {
+  .vcard {
+    width: 180px;
+  }
+
+  .vcard__title {
+    font-size: 0.85rem;
+  }
 }

@@ -29,9 +29,16 @@
 
 .search-results__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 30px 8px;
-  padding: 28px 4px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 28px 20px;
+  padding: 24px 0 36px;
+}
+
+@media (max-width: 700px) {
+  .search-results__grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 22px 14px;
+  }
 }
 
 .spin {

@@ -14,6 +14,16 @@ const SECTION_SLUGS = {
   movies: 'movies',
 }
 
+function getVideoIdFromLocation() {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('v')?.trim() ?? ''
+}
+
+function getModalModeFromLocation() {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('mode')?.trim() === 'info' ? 'info' : 'play'
+}
+
 function getBasePath() {
   const baseUrl = import.meta.env.BASE_URL || '/'
   return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
@@ -35,7 +45,7 @@ function getSearchQueryFromLocation() {
   return params.get('q')?.trim() ?? ''
 }
 
-function buildUrl(section, query = '', categorySlug = '') {
+function buildUrl(section, query = '', categorySlug = '', modal = null) {
   const trimmedQuery = query.trim()
   const path = trimmedQuery
     ? getPathForSection(section)
@@ -43,11 +53,15 @@ function buildUrl(section, query = '', categorySlug = '') {
       ? getPathForCategory(section, categorySlug)
       : getPathForSection(section)
 
-  if (!trimmedQuery) return path
-
   const params = new URLSearchParams()
-  params.set('q', trimmedQuery)
-  return `${path}?${params.toString()}`
+  if (trimmedQuery) params.set('q', trimmedQuery)
+  if (modal?.item?.identifier) {
+    params.set('v', modal.item.identifier)
+    params.set('mode', modal.mode === 'info' ? 'info' : 'play')
+  }
+
+  const queryString = params.toString()
+  return queryString ? `${path}?${queryString}` : path
 }
 
 function getRouteFromLocation() {
@@ -59,14 +73,32 @@ function getRouteFromLocation() {
   const segments = relativePath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean)
 
   if (segments[0] === 'tv-shows') {
-    return { section: 'tv', categorySlug: segments[1] ?? '', query: getSearchQueryFromLocation() }
+    return {
+      section: 'tv',
+      categorySlug: segments[1] ?? '',
+      query: getSearchQueryFromLocation(),
+      videoId: getVideoIdFromLocation(),
+      mode: getModalModeFromLocation(),
+    }
   }
 
   if (segments[0] === 'movies') {
-    return { section: 'movies', categorySlug: segments[1] ?? '', query: getSearchQueryFromLocation() }
+    return {
+      section: 'movies',
+      categorySlug: segments[1] ?? '',
+      query: getSearchQueryFromLocation(),
+      videoId: getVideoIdFromLocation(),
+      mode: getModalModeFromLocation(),
+    }
   }
 
-  return { section: 'home', categorySlug: segments[0] ?? '', query: getSearchQueryFromLocation() }
+  return {
+    section: 'home',
+    categorySlug: segments[0] ?? '',
+    query: getSearchQueryFromLocation(),
+    videoId: getVideoIdFromLocation(),
+    mode: getModalModeFromLocation(),
+  }
 }
 
 function ensureCategorySlug(category) {
@@ -90,24 +122,61 @@ export default function App() {
   const [visibleCategories, setVisibleCategories] = useState(CATEGORIES)
   const [categoriesLoading, setCategoriesLoading] = useState(false)
 
+  const closeModal = useCallback(() => {
+    const hasModalInUrl = Boolean(getVideoIdFromLocation())
+    if (hasModalInUrl && window.history.state?.modal) {
+      window.history.back()
+      return
+    }
+    setModal(null)
+  }, [])
+
   // Close modal on Escape
   useEffect(() => {
     function onKey(e) {
-      if (e.key === 'Escape') setModal(null)
+      if (e.key === 'Escape') closeModal()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [closeModal])
 
   const openPlay = useCallback(
-    (item) => setModal({ item, mode: 'play', section: activeSection }),
-    [activeSection]
+    (item) => {
+      const nextModal = { item, mode: 'play', section: activeSection }
+      const nextUrl = buildUrl(activeSection, searchQuery, activeCategorySlug, nextModal)
+      window.history.pushState(
+        {
+          section: activeSection,
+          categorySlug: activeCategorySlug,
+          query: searchQuery,
+          modal: nextModal,
+        },
+        '',
+        nextUrl
+      )
+      setModal(nextModal)
+    },
+    [activeCategorySlug, activeSection, searchQuery]
   )
   const openInfo = useCallback(
-    (item) => setModal({ item, mode: 'info', section: activeSection }),
-    [activeSection]
+    (item) => {
+      const nextModal = { item, mode: 'info', section: activeSection }
+      const nextUrl = buildUrl(activeSection, searchQuery, activeCategorySlug, nextModal)
+      window.history.pushState(
+        {
+          section: activeSection,
+          categorySlug: activeCategorySlug,
+          query: searchQuery,
+          modal: nextModal,
+        },
+        '',
+        nextUrl
+      )
+      setModal(nextModal)
+    },
+    [activeCategorySlug, activeSection, searchQuery]
   )
-  const closeModal = useCallback(() => setModal(null), [])
+
   const handleSectionChange = useCallback((section) => {
     const nextUrl = getPathForSection(section)
     const currentUrl = `${window.location.pathname}${window.location.search}`
@@ -146,6 +215,7 @@ export default function App() {
       setActiveSection(route.section)
       setActiveCategorySlug(route.categorySlug)
       setSearchQuery(route.query)
+      setModal(window.history.state?.modal ?? null)
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -153,16 +223,21 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const canonicalUrl = buildUrl(activeSection, searchQuery, activeCategorySlug)
+    const canonicalUrl = buildUrl(activeSection, searchQuery, activeCategorySlug, modal)
     const currentUrl = `${window.location.pathname}${window.location.search}`
     if (currentUrl !== canonicalUrl) {
       window.history.replaceState(
-        { section: activeSection, categorySlug: activeCategorySlug, query: searchQuery },
+        {
+          section: activeSection,
+          categorySlug: activeCategorySlug,
+          query: searchQuery,
+          modal,
+        },
         '',
         canonicalUrl
       )
     }
-  }, [activeSection, activeCategorySlug, searchQuery])
+  }, [activeSection, activeCategorySlug, searchQuery, modal])
 
   useEffect(() => {
     let cancelled = false
